@@ -10,6 +10,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timedelta
 import os
+import time
 import logging
 from dotenv import load_dotenv
 import schedule
@@ -313,6 +314,76 @@ def get_comparison():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/test-scraper', methods=['POST'])
+def test_scraper():
+    """Ejecutar scraper bajo demanda (para testing)"""
+    try:
+        logger.info("Manual scraper test triggered")
+        
+        # Obtener todos los items
+        items = ShoppingItem.query.all()
+        product_names = [item.name for item in items]
+        
+        if not product_names:
+            return jsonify({
+                'success': False,
+                'error': 'No products to scrape',
+                'products_count': 0
+            }), 400
+        
+        # Ejecutar scraper
+        scraper = PriceScraper()
+        prices = scraper.scrape_all(product_names)
+        
+        # Guardar en BD
+        updated_count = 0
+        for store in ['walmart', 'safeway', 'target', 'costco', 'sams']:
+            store_prices = prices.get(store, {})
+            
+            for product_name, price in store_prices.items():
+                if price is None:
+                    continue
+                
+                item = ShoppingItem.query.filter_by(name=product_name).first()
+                if not item:
+                    item = ShoppingItem(name=product_name)
+                    db.session.add(item)
+                    db.session.flush()
+                
+                prod_price = ProductPrice.query.filter_by(
+                    item_id=item.id,
+                    store=store
+                ).first()
+                
+                if not prod_price:
+                    prod_price = ProductPrice(item_id=item.id, store=store)
+                    db.session.add(prod_price)
+                
+                prod_price.price = float(price)
+                prod_price.last_updated = datetime.utcnow()
+                updated_count += 1
+        
+        db.session.commit()
+        logger.info(f"Test scraper completed: {updated_count} prices updated")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Scraper test completed',
+            'products_scraped': len(product_names),
+            'prices_updated': updated_count,
+            'timestamp': datetime.utcnow().isoformat(),
+            'prices': prices
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error in test scraper: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 # ==================== SCRAPING AUTOMÁTICO ====================
 
 def run_scraper():
@@ -366,19 +437,30 @@ def run_scraper():
 
 
 def schedule_scraper():
-    """Configurar scraper automático"""
-    # Ejecutar a las 11 PM y 12 AM (medianoche)
-    schedule.every().day.at("23:00").do(run_scraper)  # 11 PM
-    schedule.every().day.at("00:00").do(run_scraper)  # 12 AM
-    
+    """Configurar scraper automático en horario de Colorado."""
+
+    timezone = "America/Denver"
+
+    # 6:00 AM Colorado
+    schedule.every().day.at("06:00", timezone).do(run_scraper)
+
+    # 3:00 PM Colorado
+    schedule.every().day.at("15:00", timezone).do(run_scraper)
+
+    # 10:00 PM Colorado
+    schedule.every().day.at("22:00", timezone).do(run_scraper)
+
     def scheduler_thread():
         while True:
             schedule.run_pending()
             time.sleep(60)
-    
+
     thread = threading.Thread(daemon=True, target=scheduler_thread)
     thread.start()
-    logger.info("Scheduler started")
+
+    logger.info(
+        "Scheduler started - Running daily at 6:00 AM, 3:00 PM, and 10:00 PM Colorado time"
+    )
 
 
 # ==================== INICIALIZACIÓN ====================
@@ -393,10 +475,7 @@ def create_tables():
             logger.info("Database tables created")
 
 
-if __name__ == '__main__':
-    # Importar time en el módulo principal
-    import time
-    
+if __name__ == '__main__':    
     # Crear tablas
     with app.app_context():
         db.create_all()
