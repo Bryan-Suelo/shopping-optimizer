@@ -224,15 +224,57 @@ class PriceScraper:
         """Scrape todos los supermercados"""
         logger.info(f"Iniciando scraping para {len(products)} productos...")
         
-        results = {
-            'walmart': self.scrape_walmart(products),
-            'safeway': self.scrape_safeway(products),
-            'target': self.scrape_target(products),
-            'costco': self.scrape_costco(products),
-            'sams': self.scrape_sams(products),
-            'timestamp': datetime.now().isoformat()
+        # MOCK DATA - Precios simulados realistas
+        # En producción, estos vendrían de los scrapers reales
+        mock_prices = {
+            'walmart': {
+                'Arroz': 2.49, 'Leche': 3.68, 'Pan': 2.50, 'Manzana': 0.88, 'Naranjas': 0.49,
+                'Tomates': 1.99, 'Cebollas Blancas': 0.88, 'Cebolla Morada': 1.29, 
+                'Pepino': 0.68, 'Limones Verdes': 0.99, 'Chiles Jalapeños': 1.99,
+                'Chiles Serranos': 2.49, 'Salsa Tomate': 1.50, 'Tostadas': 2.99,
+                'Huevos': 3.98, 'Leche de Coco': 2.48, 'Sweet Potato': 1.99
+            },
+            'safeway': {
+                'Arroz': 2.79, 'Leche': 4.29, 'Pan': 3.00, 'Manzana': 1.29, 'Naranjas': 0.79,
+                'Tomates': 2.49, 'Cebollas Blancas': 1.29, 'Cebolla Morada': 1.79,
+                'Pepino': 0.99, 'Limones Verdes': 1.49, 'Chiles Jalapeños': 2.49,
+                'Chiles Serranos': 2.99, 'Salsa Tomate': 1.99, 'Tostadas': 3.49,
+                'Huevos': 4.49, 'Leche de Coco': 3.00, 'Sweet Potato': 2.49
+            },
+            'target': {
+                'Arroz': 2.69, 'Leche': 3.99, 'Pan': 2.75, 'Manzana': 1.19, 'Naranjas': 0.69,
+                'Tomates': 2.19, 'Cebollas Blancas': 1.09, 'Cebolla Morada': 1.59,
+                'Pepino': 0.89, 'Limones Verdes': 1.29, 'Chiles Jalapeños': 2.19,
+                'Chiles Serranos': 2.79, 'Salsa Tomate': 1.75, 'Tostadas': 3.19,
+                'Huevos': 4.19, 'Leche de Coco': 2.79, 'Sweet Potato': 2.29
+            },
+            'costco': {
+                'Arroz': 2.09, 'Leche': 3.29, 'Pan': 2.25, 'Manzana': 0.69, 'Naranjas': 0.39,
+                'Tomates': 1.69, 'Cebollas Blancas': 0.69, 'Cebolla Morada': 1.09,
+                'Pepino': 0.59, 'Limones Verdes': 0.79, 'Chiles Jalapeños': 1.69,
+                'Chiles Serranos': 2.19, 'Salsa Tomate': 1.29, 'Tostadas': 2.69,
+                'Huevos': 3.49, 'Leche de Coco': 2.19, 'Sweet Potato': 1.69
+            },
+            'sams': {
+                'Arroz': 2.19, 'Leche': 3.49, 'Pan': 2.35, 'Manzana': 0.79, 'Naranjas': 0.49,
+                'Tomates': 1.89, 'Cebollas Blancas': 0.79, 'Cebolla Morada': 1.19,
+                'Pepino': 0.69, 'Limones Verdes': 0.89, 'Chiles Jalapeños': 1.89,
+                'Chiles Serranos': 2.39, 'Salsa Tomate': 1.39, 'Tostadas': 2.79,
+                'Huevos': 3.69, 'Leche de Coco': 2.39, 'Sweet Potato': 1.79
+            }
         }
         
+        # Filtrar solo los productos que se buscan
+        results = {}
+        for store in ['walmart', 'safeway', 'target', 'costco', 'sams']:
+            results[store] = {}
+            for product in products:
+                # Si existe el producto en mock data, usarlo; si no, null
+                results[store][product] = mock_prices[store].get(product, None)
+        
+        results['timestamp'] = datetime.now().isoformat()
+        
+        logger.info(f"Scraping completado (usando mock data)")
         return results
 
 
