@@ -65,8 +65,6 @@ class PriceScraper:
                     logger.warning(f"Timeout en Walmart para {product}")
                     walmart_prices[product] = None
                 
-                time.sleep(1)  # Rate limiting
-                
         except Exception as e:
             logger.error(f"Error scraping Walmart: {e}")
             
@@ -109,8 +107,6 @@ class PriceScraper:
                 except requests.Timeout:
                     logger.warning(f"Timeout en Safeway para {product}")
                     safeway_prices[product] = None
-                    
-                time.sleep(1)
                 
         except Exception as e:
             logger.error(f"Error scraping Safeway: {e}")
@@ -154,8 +150,6 @@ class PriceScraper:
                 except requests.Timeout:
                     logger.warning(f"Timeout en Target para {product}")
                     target_prices[product] = None
-                    
-                time.sleep(1)
                 
         except Exception as e:
             logger.error(f"Error scraping Target: {e}")
@@ -199,8 +193,6 @@ class PriceScraper:
                 except requests.Timeout:
                     logger.warning(f"Timeout en Costco para {product}")
                     costco_prices[product] = None
-                    
-                time.sleep(1)
                 
         except Exception as e:
             logger.error(f"Error scraping Costco: {e}")
@@ -244,8 +236,6 @@ class PriceScraper:
                 except requests.Timeout:
                     logger.warning(f"Timeout en Sam's Club para {product}")
                     sams_prices[product] = None
-                    
-                time.sleep(1)
                 
         except Exception as e:
             logger.error(f"Error scraping Sam's Club: {e}")
