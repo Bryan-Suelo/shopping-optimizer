@@ -1,15 +1,14 @@
 """
 Web Scraper para Walmart, Safeway, Target, Costco y Sam's Club
-Extrae precios de productos en Colorado (Lone Tree, Highland Ranch)
+Extrae precios de productos en Colorado basado en estructura HTML real
 """
 
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
+import re
 from datetime import datetime
 import logging
-from typing import Dict, List, Tuple
-import time
+from typing import Dict, List
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,57 +16,45 @@ logger = logging.getLogger(__name__)
 class PriceScraper:
     def __init__(self):
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        self.prices = {}
+        self.timeout = 15
         
     def scrape_walmart(self, products: List[str]) -> Dict:
         """Scrape Walmart.com para precios"""
         logger.info("Scraping Walmart...")
         walmart_prices = {}
         
-        try:
-            for product in products:
-                # Walmart search
+        for product in products:
+            try:
                 url = f"https://www.walmart.com/search?q={product.replace(' ', '+')}"
+                response = requests.get(url, headers=self.headers, timeout=self.timeout)
+                response.raise_for_status()
                 
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Buscar precio con selectores más robustos
-                    price_elem = soup.find('span', {'data-testid': 'product-price'})
-                    
-                    if not price_elem:
-                        # Intenta otro selector
-                        price_span = soup.find('div', {'class': 'price-module'})
-                        if price_span:
-                            price_elem = price_span.find('span')
-                    
-                    if price_elem:
-                        price_text = price_elem.text.strip().replace('$', '').replace(',', '')
-                        try:
-                            # Tomar solo el primer número
-                            price = float(price_text.split('-')[0].split()[0].strip())
-                            walmart_prices[product] = round(price, 2)
-                            logger.info(f"Walmart {product}: ${price}")
-                        except (ValueError, IndexError):
-                            logger.warning(f"No se pudo parsear precio de Walmart para {product}")
-                            walmart_prices[product] = None
-                    else:
-                        # Si no encuentra precio, poner None
-                        walmart_prices[product] = None
-                        logger.warning(f"No se encontró precio en Walmart para {product}")
-                        
-                except requests.Timeout:
-                    logger.warning(f"Timeout en Walmart para {product}")
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Buscar en h3 tags: "Price $ 0.49 Was $ 0.89"
+                h3_tags = soup.find_all('h3')
+                price = None
+                
+                for h3 in h3_tags:
+                    text = h3.get_text()
+                    match = re.search(r'Price\s*\$\s*([\d.]+)', text)
+                    if match:
+                        price = float(match.group(1))
+                        break
+                
+                if price:
+                    walmart_prices[product] = round(price, 2)
+                    logger.info(f"Walmart {product}: ${price}")
+                else:
                     walmart_prices[product] = None
-                
-        except Exception as e:
-            logger.error(f"Error scraping Walmart: {e}")
-            
+                    logger.warning(f"No se encontró precio en Walmart para {product}")
+                    
+            except Exception as e:
+                logger.warning(f"Error en Walmart {product}: {e}")
+                walmart_prices[product] = None
+        
         return walmart_prices
     
     def scrape_safeway(self, products: List[str]) -> Dict:
@@ -75,42 +62,36 @@ class PriceScraper:
         logger.info("Scraping Safeway...")
         safeway_prices = {}
         
-        try:
-            for product in products:
-                # Safeway search
+        for product in products:
+            try:
                 url = f"https://www.safeway.com/shop/search-results.html?q={product.replace(' ', '+')}"
+                response = requests.get(url, headers=self.headers, timeout=self.timeout)
+                response.raise_for_status()
                 
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Buscar precio
-                    price_elem = soup.find('span', {'data-testid': 'product-price'})
-                    
-                    if not price_elem:
-                        price_elem = soup.find('div', {'class': 'product-price'})
-                    
-                    if price_elem:
-                        price_text = price_elem.text.strip().replace('$', '').replace(',', '')
-                        try:
-                            price = float(price_text.split('-')[0].split()[0].strip())
-                            safeway_prices[product] = round(price, 2)
-                            logger.info(f"Safeway {product}: ${price}")
-                        except (ValueError, IndexError):
-                            safeway_prices[product] = None
-                    else:
-                        safeway_prices[product] = None
-                        logger.warning(f"No se encontró precio en Safeway para {product}")
-                        
-                except requests.Timeout:
-                    logger.warning(f"Timeout en Safeway para {product}")
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Buscar en aria-label: "price approximatly $X.XX each"
+                links = soup.find_all('a')
+                price = None
+                
+                for link in links:
+                    aria_label = link.get('aria-label', '')
+                    match = re.search(r'price\s+approximatly?\s*\$\s*([\d.]+)', aria_label, re.IGNORECASE)
+                    if match:
+                        price = float(match.group(1))
+                        break
+                
+                if price:
+                    safeway_prices[product] = round(price, 2)
+                    logger.info(f"Safeway {product}: ${price}")
+                else:
                     safeway_prices[product] = None
-                
-        except Exception as e:
-            logger.error(f"Error scraping Safeway: {e}")
-            
+                    logger.warning(f"No se encontró precio en Safeway para {product}")
+                    
+            except Exception as e:
+                logger.warning(f"Error en Safeway {product}: {e}")
+                safeway_prices[product] = None
+        
         return safeway_prices
     
     def scrape_target(self, products: List[str]) -> Dict:
@@ -118,42 +99,36 @@ class PriceScraper:
         logger.info("Scraping Target...")
         target_prices = {}
         
-        try:
-            for product in products:
-                # Target search
+        for product in products:
+            try:
                 url = f"https://www.target.com/s?searchTerm={product.replace(' ', '+')}"
+                response = requests.get(url, headers=self.headers, timeout=self.timeout)
+                response.raise_for_status()
                 
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Buscar precio
-                    price_elem = soup.find('span', {'data-testid': 'product-price'})
-                    
-                    if not price_elem:
-                        price_elem = soup.find('span', {'class': 'Text-sc'})
-                    
-                    if price_elem:
-                        price_text = price_elem.text.strip().replace('$', '').replace(',', '')
-                        try:
-                            price = float(price_text.split('-')[0].split()[0].strip())
-                            target_prices[product] = round(price, 2)
-                            logger.info(f"Target {product}: ${price}")
-                        except (ValueError, IndexError):
-                            target_prices[product] = None
-                    else:
-                        target_prices[product] = None
-                        logger.warning(f"No se encontró precio en Target para {product}")
-                        
-                except requests.Timeout:
-                    logger.warning(f"Timeout en Target para {product}")
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Target tiene estructura compleja, buscar en spans con precio
+                spans = soup.find_all('span')
+                price = None
+                
+                for span in spans:
+                    text = span.get_text().strip()
+                    match = re.search(r'^\$\s*([\d.]+)', text)
+                    if match:
+                        price = float(match.group(1))
+                        break
+                
+                if price:
+                    target_prices[product] = round(price, 2)
+                    logger.info(f"Target {product}: ${price}")
+                else:
                     target_prices[product] = None
-                
-        except Exception as e:
-            logger.error(f"Error scraping Target: {e}")
-            
+                    logger.warning(f"No se encontró precio en Target para {product}")
+                    
+            except Exception as e:
+                logger.warning(f"Error en Target {product}: {e}")
+                target_prices[product] = None
+        
         return target_prices
     
     def scrape_costco(self, products: List[str]) -> Dict:
@@ -161,42 +136,39 @@ class PriceScraper:
         logger.info("Scraping Costco...")
         costco_prices = {}
         
-        try:
-            for product in products:
-                # Costco search
+        for product in products:
+            try:
                 url = f"https://www.costco.com/CatalogSearch?dept=All&keyword={product.replace(' ', '+')}"
+                response = requests.get(url, headers=self.headers, timeout=self.timeout)
+                response.raise_for_status()
                 
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Buscar precio
-                    price_elem = soup.find('span', {'data-testid': 'product-price'})
-                    
-                    if not price_elem:
-                        price_elem = soup.find('div', {'class': 'price'})
-                    
-                    if price_elem:
-                        price_text = price_elem.text.strip().replace('$', '').replace(',', '')
-                        try:
-                            price = float(price_text.split('-')[0].split()[0].strip())
-                            costco_prices[product] = round(price, 2)
-                            logger.info(f"Costco {product}: ${price}")
-                        except (ValueError, IndexError):
-                            costco_prices[product] = None
-                    else:
-                        costco_prices[product] = None
-                        logger.warning(f"No se encontró precio en Costco para {product}")
-                        
-                except requests.Timeout:
-                    logger.warning(f"Timeout en Costco para {product}")
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Costco: buscar en spans con "$X.XX"
+                spans = soup.find_all('span')
+                price = None
+                
+                for span in spans:
+                    text = span.get_text().strip()
+                    # Patrón: "$4.49"
+                    match = re.search(r'^\$\s*([\d.]+)', text)
+                    if match:
+                        price = float(match.group(1))
+                        # Validar que sea un precio razonable (entre $0.50 y $50)
+                        if 0.50 < price < 50:
+                            break
+                
+                if price:
+                    costco_prices[product] = round(price, 2)
+                    logger.info(f"Costco {product}: ${price}")
+                else:
                     costco_prices[product] = None
-                
-        except Exception as e:
-            logger.error(f"Error scraping Costco: {e}")
-            
+                    logger.warning(f"No se encontró precio en Costco para {product}")
+                    
+            except Exception as e:
+                logger.warning(f"Error en Costco {product}: {e}")
+                costco_prices[product] = None
+        
         return costco_prices
     
     def scrape_sams(self, products: List[str]) -> Dict:
@@ -204,42 +176,36 @@ class PriceScraper:
         logger.info("Scraping Sam's Club...")
         sams_prices = {}
         
-        try:
-            for product in products:
-                # Sam's Club search
+        for product in products:
+            try:
                 url = f"https://www.samsclub.com/search/{product.replace(' ', '+')}"
+                response = requests.get(url, headers=self.headers, timeout=self.timeout)
+                response.raise_for_status()
                 
-                try:
-                    response = requests.get(url, headers=self.headers, timeout=10)
-                    response.raise_for_status()
-                    
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    
-                    # Buscar precio
-                    price_elem = soup.find('span', {'data-testid': 'product-price'})
-                    
-                    if not price_elem:
-                        price_elem = soup.find('span', {'class': 'price'})
-                    
-                    if price_elem:
-                        price_text = price_elem.text.strip().replace('$', '').replace(',', '')
-                        try:
-                            price = float(price_text.split('-')[0].split()[0].strip())
-                            sams_prices[product] = round(price, 2)
-                            logger.info(f"Sam's Club {product}: ${price}")
-                        except (ValueError, IndexError):
-                            sams_prices[product] = None
-                    else:
-                        sams_prices[product] = None
-                        logger.warning(f"No se encontró precio en Sam's Club para {product}")
-                        
-                except requests.Timeout:
-                    logger.warning(f"Timeout en Sam's Club para {product}")
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Sam's: buscar en h3 tags: "Envy Apples, 4 lbs. $6.17"
+                h3_tags = soup.find_all('h3')
+                price = None
+                
+                for h3 in h3_tags:
+                    text = h3.get_text()
+                    match = re.search(r'\$\s*([\d.]+)', text)
+                    if match:
+                        price = float(match.group(1))
+                        break
+                
+                if price:
+                    sams_prices[product] = round(price, 2)
+                    logger.info(f"Sam's Club {product}: ${price}")
+                else:
                     sams_prices[product] = None
-                
-        except Exception as e:
-            logger.error(f"Error scraping Sam's Club: {e}")
-            
+                    logger.warning(f"No se encontró precio en Sam's Club para {product}")
+                    
+            except Exception as e:
+                logger.warning(f"Error en Sam's Club {product}: {e}")
+                sams_prices[product] = None
+        
         return sams_prices
     
     def scrape_all(self, products: List[str]) -> Dict:
@@ -261,24 +227,16 @@ class PriceScraper:
 if __name__ == "__main__":
     # Productos de ejemplo
     products = [
-        'Tomates',
-        'Cebollas Blancas',
-        'Cebolla Morada',
-        'Pepino',
-        'Limones Verdes',
-        'Chiles Jalapeños',
-        'Chiles Serranos',
-        'Salsa Tomate',
-        'Tostadas',
-        'Huevos',
+        'Manzanas',
         'Leche',
-        'Leche de Coco',
-        'Sweet Potato'
+        'Pan',
+        'Arroz',
+        'Naranjas'
     ]
     
     scraper = PriceScraper()
     prices = scraper.scrape_all(products)
     
-    # Convertir a pandas para visualizar
-    df = pd.DataFrame(prices)
-    print(df)
+    # Mostrar resultados
+    import json
+    print(json.dumps(prices, indent=2))
