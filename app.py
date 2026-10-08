@@ -314,6 +314,67 @@ def get_comparison():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/comparison-by-product', methods=['GET'])
+def get_comparison_by_product():
+    """Obtener comparación de precios POR PRODUCTO (tabla)"""
+    try:
+        items = ShoppingItem.query.all()
+        stores = ['walmart', 'safeway', 'target', 'costco', 'sams']
+        
+        result = []
+        
+        for item in items:
+            row = {
+                'product': item.name,
+                'quantity': item.quantity,
+                'unit': item.unit,
+                'prices': {}
+            }
+            
+            # Obtener precio de cada supermercado
+            for store in stores:
+                price_obj = ProductPrice.query.filter_by(
+                    item_id=item.id,
+                    store=store
+                ).first()
+                
+                if price_obj and price_obj.price:
+                    # Calcular precio total para esta cantidad
+                    total = price_obj.price * item.quantity
+                    row['prices'][store] = {
+                        'unit_price': price_obj.price,
+                        'total': round(total, 2),
+                        'last_updated': price_obj.last_updated.isoformat() if price_obj.last_updated else None
+                    }
+                else:
+                    row['prices'][store] = None
+            
+            # Encontrar mejor opción
+            valid_prices = {store: data['total'] for store, data in row['prices'].items() if data}
+            
+            if valid_prices:
+                best_store = min(valid_prices, key=valid_prices.get)
+                row['best_option'] = {
+                    'store': best_store,
+                    'price': valid_prices[best_store]
+                }
+            else:
+                row['best_option'] = None
+            
+            result.append(row)
+        
+        return jsonify({
+            'success': True,
+            'comparison_table': result,
+            'stores': stores,
+            'products_count': len(result)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting comparison by product: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/test-scraper', methods=['POST'])
 def test_scraper():
     """Ejecutar scraper bajo demanda (para testing)"""
